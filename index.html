@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Césars Finanz- & KI-Cockpit</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen pb-24 font-sans selection:bg-blue-500">
+
+  <!-- Top Header -->
+  <header class="sticky top-0 z-20 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 flex justify-between items-center">
+    <div>
+      <h1 class="text-base font-bold tracking-tight text-white">Finanz- & KI-Cockpit</h1>
+      <p id="sync-status" class="text-xs text-slate-400">Stand: Live-Daten geladen</p>
+    </div>
+    <button onclick="fetchLiveSheet()" class="bg-blue-600 active:bg-blue-700 text-xs font-semibold px-3 py-1.5 rounded-lg shadow">
+      ↻ Sync
+    </button>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 space-y-5">
+
+    <!-- 1. DKB VISA WÄCHTER CARD (DEIN HOMESCREEN-KERN) -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs uppercase tracking-wider font-semibold text-blue-400">DKB Visa Wächter (Nov 26)</span>
+        <span id="visa-badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+          GRÜN: Auf Kurs
+        </span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 my-3">
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80">
+          <p class="text-xs text-slate-400">Erlaubtes Tagesbudget</p>
+          <p id="visa-daily" class="text-2xl font-extrabold text-emerald-400 mt-0.5">32,03 €</p>
+          <p id="visa-days" class="text-[11px] text-slate-500">für noch 16 Tage</p>
+        </div>
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80">
+          <p class="text-xs text-slate-400">Restbudget (von 985 €)</p>
+          <p id="visa-rem" class="text-2xl font-extrabold text-white mt-0.5">512,41 €</p>
+          <p id="visa-spent" class="text-[11px] text-slate-500">Verbraucht: 472,59 €</p>
+        </div>
+      </div>
+
+      <!-- Fortschrittsbalken -->
+      <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden mb-3">
+        <div id="visa-bar" class="bg-gradient-to-r from-blue-500 to-emerald-400 h-full transition-all duration-500" style="width: 48%"></div>
+      </div>
+
+      <!-- Schnelleingabe für neuen DKB-Visa-Saldo -->
+      <div class="flex gap-2 mt-2">
+        <input id="new-visa-input" type="number" step="0.01" placeholder="Neuer DKB-Visa-Saldo (z.B. 510.40)"
+               class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+        <button onclick="updateVisaBalance()" class="bg-slate-800 hover:bg-slate-700 text-xs font-semibold px-3.5 py-2 rounded-xl border border-slate-700 shrink-0">
+          Speichern
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. TÄGLICHE KI-QUANT-SIGNALE (TOP PICKS AUS 650+ AKTIEN) -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-bold text-white">🎯 KI-Quant-Scanner (Top-Signale)</h2>
+        <span class="text-[11px] text-slate-400">S&P 500 + EU Filter</span>
+      </div>
+      <div id="signals-list" class="space-y-3"></div>
+    </section>
+
+    <!-- 3. DEIN DEPOT & SPARPLAN-AUFTEILUNG -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-bold text-white">📈 Depot & Monats-Allokation (350 €)</h2>
+        <span class="text-xs text-emerald-400 font-semibold">200 € ETF / 150 € Swing</span>
+      </div>
+      <div id="depot-list" class="space-y-2.5"></div>
+    </section>
+
+    <!-- 4. SCHULDEN-LAWINEN-TRACKER (+500 € TURBO) -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-bold text-white">🚀 Schulden-Turbo (+500 € / Monat)</h2>
+        <span class="text-xs text-amber-400 font-semibold">Frei bis Dez 2027</span>
+      </div>
+      <div id="loans-list" class="space-y-2.5"></div>
+    </section>
+
+  </main>
+
+  <script>
+    // HIER DEINE GOOGLE APPS SCRIPT WEB-APP URL EINTRAGEN:
+    const SHEET_API_URL = "HIER_DEINE_APPS_SCRIPT_WEB_APP_URL_EINTRAGEN";
+
+    // Vorbelegte Echtdaten aus deinem Sheet (Fallback & Sofort-Anzeige)
+    let state = {
+      visa: { cap: 985.00, spent: 472.59, remaining: 512.41, daysLeft: 16, dailyMax: 32.03, status: "GRÜN: Auf Kurs" },
+      signals: [
+        {
+          date: "14.11.2026", ticker: "NVDA", name: "NVIDIA Corp.", profile: "Oversold_Swing",
+          price: "162.50 $", rsi: "26.4", pe: "18.2", signal: "WATCHLIST (EARNINGS 17.11.)",
+          buyZone: "147 - 152 $", stop: "138.00 $",
+          reason: "-30% vom Hoch, KGV ~18 historisch günstig. Dienstag (17.11.) Q3-Zahlen & Call von Interims-CEO Colette Kress abwarten!"
+        },
+        {
+          date: "14.11.2026", ticker: "GME", name: "GameStop Corp.", profile: "Portfolio_Guard",
+          price: "28.40 $", rsi: "51.2", pe: "24.5", signal: "HALTEN (THESE INTAKT)",
+          buyZone: "22 - 24.50 $", stop: "19.50 $",
+          reason: "Bilanz-Festung (>5 Mrd. $ Cash + eBay-Beteiligung) und Rekord-Q2 (160,2 Mio. $). Kein Verkauf vor den nächsten Zahlen."
+        }
+      ],
+      depot: [
+        { ticker: "GME", name: "GameStop (Bestand)", bucket: "Long-Term Satellite", value: "Bestand", pnlPct: "Halten" },
+        { ticker: "A2PKXG", name: "Vanguard FTSE All-World", bucket: "Core ETF (Sparplan am 02.)", value: "200,00 € / Mo", pnlPct: "0,00 € Gebühr" },
+        { ticker: "CASH", name: "Taktische Swing-Reserve", bucket: "Für KI-Scanner-Signale", value: "150,00 € / Mo", pnlPct: "Bereit" }
+      ],
+      loans: [
+        { prio: "Prio 1 (Aktiv)", name: "Younited / Hoist Finance", balance: "4.830,00 €", rate: "293,86 € + 500 € Turbo", interest: "4,78 %", note: "Erledigt im Juni 2027 (+293,86 €/Mo frei!)" },
+        { prio: "Prio 2 (Ab Jul 27)", name: "KfW Studienkredit", balance: "3.690,13 €", rate: "54,70 €", interest: "6,26 %", note: "Mit Lawine (848 €/Mo) bis Okt 2027 tilgen" },
+        { prio: "Prio 3 (Ab Nov 27)", name: "Santander / Openbank", balance: "3.405,91 €", rate: "136,77 €", interest: "4,04 %", note: "Im Finale bis Dez 2027 komplett weg" }
+      ]
+    };
+
+    function render() {
+      // 1. Render Visa
+      const pct = Math.min(100, Math.round((state.visa.spent / state.visa.cap) * 100));
+      document.getElementById("visa-daily").textContent = `${state.visa.dailyMax.toFixed(2).replace(".", ",")} €`;
+      document.getElementById("visa-days").textContent = `für noch ${state.visa.daysLeft} Tage (${pct}% verbraucht)`;
+      document.getElementById("visa-rem").textContent = `${state.visa.remaining.toFixed(2).replace(".", ",")} €`;
+      document.getElementById("visa-spent").textContent = `Verbraucht: ${state.visa.spent.toFixed(2).replace(".", ",")} €`;
+      document.getElementById("visa-bar").style.width = `${pct}%`;
+
+      // 2. Render Signals
+      const sigHtml = state.signals.map(s => {
+        const isBuy = s.signal.includes("KAUFEN");
+        const badgeColor = isBuy ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : "bg-amber-500/20 text-amber-300 border-amber-500/40";
+        return `
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+            <div class="flex justify-between items-start">
+              <div>
+                <span class="font-bold text-white text-sm">${s.ticker}</span>
+                <span class="text-xs text-slate-400 ml-1">${s.name}</span>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}">${s.signal}</span>
+            </div>
+            <div class="flex gap-3 text-xs text-slate-300 mt-2 font-mono">
+              <span>Kurs: ${s.price}</span>
+              <span>RSI: ${s.rsi}</span>
+              <span>KGV: ${s.pe}</span>
+            </div>
+            <div class="flex justify-between text-[11px] text-blue-300 mt-1.5 font-medium">
+              <span>Kaufzone: ${s.buyZone}</span>
+              <span>Stop-Loss: ${s.stop}</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-2 leading-relaxed">${s.reason}</p>
+          </div>
+        `;
+      }).join("");
+      document.getElementById("signals-list").innerHTML = sigHtml;
+
+      // 3. Render Depot
+      document.getElementById("depot-list").innerHTML = state.depot.map(d => `
+        <div class="flex justify-between items-center bg-slate-950/60 border border-slate-800/80 rounded-xl px-3 py-2.5">
+          <div>
+            <p class="text-xs font-bold text-white">${d.ticker} <span class="font-normal text-slate-400">– ${d.name}</span></p>
+            <p class="text-[11px] text-slate-500">${d.bucket}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-xs font-bold text-slate-200">${d.value}</p>
+            <p class="text-[11px] text-emerald-400">${d.pnlPct}</p>
+          </div>
+        </div>
+      `).join("");
+
+      // 4. Render Loans
+      document.getElementById("loans-list").innerHTML = state.loans.map(l => `
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl px-3 py-2.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold text-white">${l.name}</span>
+            <span class="text-xs font-bold text-amber-400">${l.balance} (${l.interest})</span>
+          </div>
+          <div class="flex justify-between text-[11px] text-slate-400 mt-1">
+            <span>${l.prio}: ${l.rate}</span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-0.5">${l.note}</p>
+        </div>
+      `).join("");
+    }
+
+    async function fetchLiveSheet() {
+      if (SHEET_API_URL.includes("HIER_DEINE")) return;
+      document.getElementById("sync-status").textContent = "Synchronisiere mit Google Sheet...";
+      try {
+        const res = await fetch(SHEET_API_URL);
+        const data = await res.json();
+        const spent = parseFloat(String(data.visa.spent).replace(".", "").replace(",", ".").replace(/[^\d.-]/g, "")) || 472.59;
+        const today = new Date();
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const daysLeft = Math.max(1, lastDay - today.getDate());
+        const rem = 985.00 - spent;
+        state.visa = { cap: 985.00, spent, remaining: rem, daysLeft, dailyMax: rem / daysLeft, status: data.visa.status };
+        if (data.signals && data.signals.length) state.signals = data.signals;
+        render();
+        document.getElementById("sync-status").textContent = `Live synchronisiert (${data.updatedAt} Uhr)`;
+      } catch (e) {
+        document.getElementById("sync-status").textContent = "Offline-Modus (Lokale Daten)";
+      }
+    }
+
+    async function updateVisaBalance() {
+      const val = parseFloat(document.getElementById("new-visa-input").value);
+      if (isNaN(val)) return;
+      const today = new Date();
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const daysLeft = Math.max(1, lastDay - today.getDate());
+      state.visa.spent = val;
+      state.visa.remaining = 985.00 - val;
+      state.visa.dailyMax = state.visa.remaining / daysLeft;
+      state.visa.daysLeft = daysLeft;
+      render();
+      document.getElementById("new-visa-input").value = "";
+      if (!SHEET_API_URL.includes("HIER_DEINE")) {
+        await fetch(`${SHEET_API_URL}?action=updateVisa&amount=${val}`);
+        document.getElementById("sync-status").textContent = "Neuer Visa-Saldo im Sheet gespeichert!";
+      }
+    }
+
+    render();
+    fetchLiveSheet();
+  </script>
+</body>
+</html>
